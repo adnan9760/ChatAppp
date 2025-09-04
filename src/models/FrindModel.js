@@ -5,13 +5,13 @@ const { Schema, model } = mongoose;
 
 const friendshipSchema = new Schema({
   friendship_id: {
-    type: String, // UUID as string
+    type: String,
     required: true,
     unique: true,
     default: uuidv4,
   },
   user1_id: {
-    type: mongoose.Schema.Types.ObjectId, // UUID as string, reference to User
+    type: mongoose.Schema.Types.ObjectId, 
     required: true,
     ref:"User"
   },
@@ -32,6 +32,7 @@ const friendshipSchema = new Schema({
   chat_room_id: {
     type: String,
     required: true,
+    
   },
 });
 

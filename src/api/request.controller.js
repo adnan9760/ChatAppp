@@ -1,46 +1,53 @@
-// server.js or routes/friendRequest.js
 import express from 'express';
 import crypto from 'crypto'
-const dbconnect = require('./lib/Dbconnect'); // your DB connection
-import { User } from '../models/UserModel';
-import { FriendRequest } from '../models/FriendRequestModel';
-import mailSender from '../utils/mailSender'
-const router = express.Router();
-import { Friendship } from '../models/FrindModel';
+import { User } from '../models/UserModel.js';
+import { FriendRequest } from '../models/FriendRequestModel.js';
+import mailSender from '../utils/mailSender.js'
+import { v4 as uuidv4 } from "uuid";
+import { Friendship } from '../models/FrindModel.js';
 
-router.use(express.json());
-
-router.post('/send', async (req, res) => {
+export const FriendRequests = async (req, res) => {
   try {
     const { email } = req.body;
     const currentUser = req.user; 
 
     if (!email || !validateEmail(email)) {
-      return res.status(400).json({ error: 'Email is not valid' });
+      return res.status(400).json({ error: "Email is not valid" });
     }
 
     if (email === currentUser.email) {
       return res.status(400).json({ error: "You can't send self request" });
     }
 
-    const alreadySent = await FriendRequest.findOne({ toUser: email, fromUser: currentUser.email });
+    const alreadySent = await FriendRequest.findOne({
+      recipient_email: email,
+      request_email: currentUser.email,
+    });
     if (alreadySent) {
-      return res.status(400).json({ error: 'Friend request already sent' });
+      return res.status(400).json({ error: "Friend request already sent" });
     }
 
     const toUser = await User.findOne({ email });
-    if (toUser && await areAlreadyFriends(toUser._id, currentUser._id)) {
-      return res.status(400).json({ error: 'You are already friends' });
+    if (toUser && (await areAlreadyFriends(toUser._id, currentUser._id))) {
+      return res.status(400).json({ error: "You are already friends" });
     }
 
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = crypto.randomBytes(32).toString("hex");
 
     const friendrequest = new FriendRequest({
-      toUser: email,
-      fromUser: currentUser.email,
-      token
+      recipient_email: email,
+      request_email: currentUser.email,
+      token_hash: token,
+      recipient_id: toUser ? toUser._id : null,
+      requester_id:currentUser.id
     });
     await friendrequest.save();
+
+    const userDoc = await User.findById(currentUser._id);
+    if (userDoc) {
+      userDoc.requested.push(friendrequest._id);
+      await userDoc.save();
+    }
 
     if (toUser) {
       await sendFriendRequestEmail(currentUser, toUser, token);
@@ -49,19 +56,17 @@ router.post('/send', async (req, res) => {
     }
 
     res.status(200).json({
-      message: 'Friend request sent successfully',
-      type: toUser ? 'friend_request' : 'invite'
+      message: "Friend request sent successfully",
+      type: toUser ? "friend_request" : "invite",
+      success: true,
     });
-
   } catch (error) {
-    console.error('Error sending friend request:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error sending friend request:", error);
+    res.status(500).json({ error: "Internal server error", success: false });
   }
-});
+};
 
-// Utility functions
 function validateEmail(email) {
-  // basic email regex check
   const re = /\S+@\S+\.\S+/;
   return re.test(email);
 }
@@ -73,8 +78,8 @@ async function areAlreadyFriends(userId1, userId2) {
 }
 
 async function sendFriendRequestEmail(fromUser, toUser, token) {
-  const acceptUrl = `${process.env.FRONTEND_URL}/friends/accept?token=${token}`;
-  const rejectUrl = `${process.env.FRONTEND_URL}/friends/reject?token=${token}`;
+  const acceptUrl = `http://localhost:3000/friends/accept?token=${token}`;
+  const rejectUrl = `http://localhost:3000/friends/reject?token=${token}`;
 
   const htmlContent = `
     <div>
@@ -87,8 +92,7 @@ async function sendFriendRequestEmail(fromUser, toUser, token) {
     </div>
   `;
 
-  await sendMail({
-    from: process.env.EMAIL_FROM,
+  await mailSender({
     to: toUser.email,
     subject: `${fromUser.name} sent you a friend request`,
     html: htmlContent
@@ -96,19 +100,38 @@ async function sendFriendRequestEmail(fromUser, toUser, token) {
 }
 
 async function sendInviteEmail(fromUser, toEmail, token) {
-  const signupUrl = `${process.env.FRONTEND_URL}/signup?invite=${token}&email=${encodeURIComponent(toEmail)}`;
+  const signupUrl = `http://localhost:3000/signup?invite=${token}&email=${encodeURIComponent(toEmail)}`;
 
   const htmlContent = `
-    <div>
-      <h2>You're Invited!</h2>
-      <p><strong>${fromUser.name}</strong> (${fromUser.email}) has invited you to join our platform!</p>
-      <a href="${signupUrl}">Join & Accept Friend Request</a>
-      <p>This invitation will expire in 7 days.</p>
-    </div>
-  `;
+  <div style="font-family: Arial, sans-serif; background-color: #f4f7fb; padding: 20px; color: #333;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+      <tr>
+        <td style="background: linear-gradient(90deg, #4f46e5, #3b82f6); padding: 20px; text-align: center; color: #fff;">
+          <h1 style="margin: 0; font-size: 24px;">You're Invited 🎉</h1>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 30px; text-align: left; font-size: 16px; line-height: 1.6; color: #444;">
+          <p><strong>${fromUser.name}</strong> (<a href="mailto:${fromUser.email}" style="color: #3b82f6; text-decoration: none;">${fromUser.email}</a>) has invited you to join our platform!</p>
+          <p style="margin: 20px 0; text-align: center;">
+            <a href="${signupUrl}" style="display: inline-block; background: #4f46e5; color: #fff; font-size: 16px; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+              🚀 Join & Accept Friend Request
+            </a>
+          </p>
+          <p style="font-size: 14px; color: #666;">This invitation will expire in <strong>7 days</strong>.</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="background: #f4f7fb; padding: 15px; text-align: center; font-size: 13px; color: #888;">
+          © ${new Date().getFullYear()} Our Platform · All Rights Reserved
+        </td>
+      </tr>
+    </table>
+  </div>
+`;
 
-  await sendMail({
-    from: process.env.EMAIL_FROM,
+
+  await mailSender({
     to: toEmail,
     subject: `${fromUser.name} invited you to join our platform`,
     html: htmlContent
@@ -157,18 +180,19 @@ async function sendInviteEmail(fromUser, toEmail, token) {
 //     res.status(500).json({ message: "Server error" });
 // }
 // })
-router.post("/accept", async (req, res) => {
+ export const AcceptFriendRequest =  async (req, res) => {
   try {
     const userId = req.user.id;
-    const { requesterId } = req.body;
-
-    if (!requesterId) {
+    const useremail= req.user.email;
+    const { id } = req.body;
+console.log("idddd in accerept ",id);
+    if (!id) {
       return res.status(400).json({ message: "requesterId is required" });
     }
 
     const [user1, user2] = await Promise.all([
       User.findById(userId),
-      User.findById(requesterId),
+      User.findById(id),
     ]);
     if (!user1 || !user2) {
       return res.status(404).json({ message: "User not found" });
@@ -176,8 +200,8 @@ router.post("/accept", async (req, res) => {
 
     const existingFriendship = await Friendship.findOne({
       $or: [
-        { user1_id: userId, user2_id: requesterId },
-        { user1_id: requesterId, user2_id: userId },
+        { user1_id: userId, user2_id: id },
+        { user1_id: id, user2_id: userId },
       ],
     });
 
@@ -189,14 +213,21 @@ router.post("/accept", async (req, res) => {
 
     const friendship = await Friendship.create({
       user1_id: userId,
-      user2_id: requesterId,
+      user2_id: id,
       chat_room_id: uuidv4(),
     });
-   await notificationQueue.add("friend_request_accepted", {
-      senderId: requesterId,
-      receiverId: userId,
-      message: `${req.user.name} accepted your friend request`,
+
+   await FriendRequest.findOneAndDelete({
+      recipient_id: userId,  
+      requester_id: id,      
     });
+
+
+  //  await notificationQueue.add("friend_request_accepted", {
+  //     senderId: id,
+  //     receiverId: userId,
+  //     message: `${req.user.name} accepted your friend request`,
+  //   });
 
     return res.status(201).json({
       message: "Friend request accepted",
@@ -206,36 +237,40 @@ router.post("/accept", async (req, res) => {
     console.error("Error accepting friend request:", error);
     res.status(500).json({ message: "Internal server error" });
   }
-});
+};
 
 export const getFriends = async (req, res) => {
   try {
-    const userId = req.user.id; 
+    const userId = req.user.id;
 
     const friendships = await Friendship.find({
-      status: "active",
-      $or: [
-        { user1_id: userId },
-        { user2_id: userId }
-      ]
+      $or: [{ user1_id: userId }, { user2_id: userId }],
     })
-      .populate("user1_id", "username email") 
-      .populate("user2_id", "username email"); 
+      .populate("user1_id", "username email _id")
+      .populate("user2_id", "username email _id");
 
-    const friends = friendships.map(friendship => {
-      if (friendship.user1_id._id.toString() === userId.toString()) {
-        return friendship.user2_id; 
+    let friends = friendships.map((friendship) => {
+      if (
+        friendship.user1_id &&
+        friendship.user1_id._id.toString() === userId.toString()
+      ) {
+        return friendship.user2_id;
       } else {
-        return friendship.user1_id; 
+        return friendship.user1_id;
       }
     });
 
-    return res.json({ success: true, friends });
+    const uniqueFriends = [
+      ...new Map(friends.map((f) => [f._id.toString(), f])).values(),
+    ];
+
+    return res.json({ success: true, friends: uniqueFriends });
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching friends:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 
 export const rejectRequest = async (req, res) => {
   try {
@@ -262,6 +297,30 @@ export const rejectRequest = async (req, res) => {
   }
 };
 
+export const getfriendRequest = async (req, res) => {
+  try {
+    const email = req.user.email;
+
+    const friendRequests = await FriendRequest.find({
+      recipient_email: email,
+    }).populate("request_email", "username email created_at"); 
+
+    const senderEmails = friendRequests.map((req) => req.request_email);
+
+    const friendDetails = await User.find({
+      email: { $in: senderEmails },
+    }).select("username email created_at");
+
+    return res.json({
+      success: true,
+      requests: friendRequests,
+      senders: friendDetails,
+    });
+  } catch (err) {
+    console.error("Error fetching friend requests:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 export const getPendingUser = async (req, res) => {
   try {
     const userId = req.user.id; 
@@ -280,6 +339,6 @@ export const getPendingUser = async (req, res) => {
   }
 };
 
-module.exports = router;
+
 
 

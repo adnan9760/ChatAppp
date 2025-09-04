@@ -1,32 +1,41 @@
 import mongoose from "mongoose";
+import { type } from "os";
 import { v4 as uuidv4 } from "uuid";
 
 const { Schema, model } = mongoose;
 
 const friendRequestSchema = new Schema({
   request_id: {
-    type: String, // UUID as string
+    type: String,
     required: true,
     unique: true,
     default: uuidv4,
   },
   requester_id: {
     type:mongoose.Schema.Types.ObjectId,
-    required: true,
     ref:'User'
+  },
+  request_email:{
+    type: String,
+    required: true,
+
   },
   reciever_id: {
     type:mongoose.Schema.Types.ObjectId,
-    required: true,
     ref:'User'
   },
   recipient_email: {
     type: String,
     required: true,
+    ref:"User"
+  },
+  reciever_email: {
+    type:mongoose.Schema.Types.ObjectId,
+    ref:"User"
   },
   recipient_id: {
-    type: String,
-    default: null,
+    type:mongoose.Schema.Types.ObjectId,
+     ref:"User"
   },
   status: {
     type: String,
@@ -43,7 +52,7 @@ const friendRequestSchema = new Schema({
   },
   expires_at: {
     type: Date,
-    required: true,
+    // required: true,
   },
 });
 

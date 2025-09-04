@@ -2,9 +2,10 @@ import { WebSocketServer } from "ws";
 import RoomManager from "./RoomManager.js";
 import redis from "./Redis.js";
 
+
 class WebSocketRoomServer {
     constructor(port = 8080) {
-        this.userSockets = new Map();  // userId -> socket
+        this.userSockets = new Map();  
         this.roomManager = new RoomManager();
         this.wss = new WebSocketServer({ port });
         console.log(`WebSocket server started on port ${port}`);
@@ -48,6 +49,7 @@ class WebSocketRoomServer {
                 break;
 
             case 'join_room':
+                console.log("roomid",roomId);
                 this.roomManager.JoinRoom(client, roomId, data);
                 break;
 
@@ -56,7 +58,8 @@ class WebSocketRoomServer {
                 break;
 
             case 'create_room':
-                const newRoomId = this.roomManager.CreateRoom(client, data?.roomId);
+                console.log("iddddddddddddddd",roomId);
+                const newRoomId = this.roomManager.CreateRoom(client,roomId);
                 this.roomManager.sendToClient(client, {
                     type: 'room_created',
                     roomId: newRoomId
@@ -64,7 +67,12 @@ class WebSocketRoomServer {
                 break;
 
             case 'room_message':
+                console.log("rooooooomid",roomId);
                 this.roomManager.handleRoomMsg(roomId, client, data);
+                //  this.roomManager.sendToClient(client, {
+                //     type: 'room_msg',
+                //     roomId: roomId
+                // });
                 break;
 
             default:

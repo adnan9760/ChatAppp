@@ -5,88 +5,109 @@ class RoomManager {
     constructor() {
         this.rooms = new Map();
         this.clients = new Map();
+         this.redis = redis;
         this.clientinfo = new Map();
     }
 
-    CreateRoom(client,roomid ) {
-        const id = roomid || v4;
+    CreateRoom(client,roomId ) {
+        console.log("idddddd",roomId)
 
-        if (!this.rooms.has(id)) {
-            this.rooms.set(id, new Set());
-            console.log(`Room Created, ${id}`);
+        if (!this.rooms.has(roomId)) {
+            this.rooms.set(roomId, new Set());
+            console.log(`Room Created, ${roomId}`);
         }
-        this.rooms.get(id).add(client);
-        this.clientinfo.set(client, id);
+        this.rooms.get(roomId).add(client);
+        this.clientinfo.set(client, roomId);
 
-        console.log(`Client auto-joined room ${id}`);
-        return id;
+        console.log(`Client auto-joined room ${roomId}`);
+        return roomId;
     }
 
-   async JoinRoom(client, roomid, clientData = {}) {
-        if (!this.rooms.has(roomid)) {
-            this.CreateRoom(roomid);
-        }
-        this.rooms.get(roomid).add(client);
-        if (!this.clients.has(client)) {
-            this.clients.set(client, new Set());
-        }
-        this.clients.get(client).add(roomid);
+  
 
-        this.clientinfo.set(client, {
-            id: clientData.id || v4,
-            username: clientData.name || 'Anonymous',
-            joindAt: new Date(),
-        })
-        const clientInfo = this.clientinfo.get(client);
-        console.log(`${clientInfo.username} has joined your group`);
+async JoinRoom(client, roomId, clientData = {}) {
+    if (!this.rooms.has(roomId)) {
+        this.CreateRoom(roomId);
+    }
 
+    console.log("inside JoinRoom");
+    console.log("client", client);
+    console.log("roomid", roomId);
 
-        this.broadcastToRoom(roomid, {
-            type: 'user_joined',
-            roomid,
+    this.rooms.get(roomId).add(client);
+
+    if (!this.clients.has(client)) {
+        this.clients.set(client, new Set());
+    }
+    this.clients.get(client).add(roomId);
+
+    this.clientinfo.set(client, {
+        id: roomId,
+        username: clientData.name || "Anonymous",
+        joinedAt: new Date(),
+    });
+
+    const clientInfo = this.clientinfo.get(client);
+    console.log(`${clientInfo.username} has joined room: ${roomId}`);
+
+    this.broadcastToRoom(
+        roomId,
+        {
+            type: "user_joined",
+            roomId,
             user: clientInfo,
-            timestamp: new Date().toISOString()
-        }, client);
-     const history = await this.getRoomMessages(roomid, 50);
-        this.sendToClient(client, {
-            type: 'room_joined',
-            roomid,
-            history,
-            users: this.getRoomUsers(roomid),
-            timestamp: new Date().toISOString()
-        });
-        return true;
-    }
+            timestamp: new Date().toISOString(),
+        },
+        client 
+    );
 
-    async handleRoomMsg(roomid,client,data){
-        
-        const room = this.rooms.get(roomid);
-        if(!room){
-            console.log("room does'nt Exist");
-            return;
-        }
+    const history = await this.getRoomMessages(roomId, 50);
+    this.sendToClient(client, {
+        type: "room_joined",
+        roomId,
+        history,
+        users: this.getRoomUsers(roomId),
+        timestamp: new Date().toISOString(),
+    });
+
+    return true;
+}
+
+
+    async handleRoomMsg(roomId, client, data) {
+        console.log("roomname",roomId);
+    const room = this.rooms.get(roomId);
+    if (!room) {
+        console.log("Room doesn't exist:", roomId);
+        return;
+    }
 
     const senderInfo = this.clientinfo.get(client);
 
-    const Message = {
-        type:'room_message',
-        roomid,
-        data,
-        from :senderInfo,
-        timestamp:new Date().toISOString()
+    const message = {
+        type: 'room_message',
+        roomId,           
+        data,             
+        from: senderInfo, 
+        timestamp: new Date().toISOString()
     };
-    console.log("MEssage",Message);
+
+    console.log("Message to broadcast:", message);
 
     try {
-        console.log("in Try")
-       
-        await this.redis.rPush(`room:${roomid}:Message`,JSON.stringify(Message));
+        await this.redis.rPush(`room:${roomId}:Message`, JSON.stringify(message));
     } catch (error) {
         console.error("Error saving message to Redis:", error);
     }
 
-        this.broadcastToRoom(roomid,data);
-    }
+    room.forEach(c => {
+        if (c.readyState === WebSocket.OPEN) {
+            console.log("adnan")
+            c.send(JSON.stringify(message));
+        }
+    });
+}
+
 
     async getRoomMessages(roomid,limit=50){
         try {

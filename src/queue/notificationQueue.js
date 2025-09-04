@@ -50,7 +50,7 @@ done();
 
 
     } catch (error) {
-     console.error("❌ Notification processing failed:", error);
+     console.error("Notification processing failed:", error);
     done(err);
     }
 })

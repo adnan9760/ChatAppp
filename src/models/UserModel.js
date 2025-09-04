@@ -1,3 +1,4 @@
+import { request } from "express";
 import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 
@@ -5,7 +6,7 @@ const { Schema, model } = mongoose;
 
 const userSchema = new Schema({
   user_id: {
-    type: String, // UUID as string
+    type: String,
     required: true,
     unique: true,
     default: uuidv4,
@@ -24,7 +25,7 @@ const userSchema = new Schema({
     required: true,
   },
   profile_picture: {
-    type: String, // Store URL or base64
+    type: String, 
     default: null,
   },
    friends: [
@@ -45,6 +46,10 @@ const userSchema = new Schema({
     type: Date,
     default: Date.now,
   },
+  requested:[{
+    type:mongoose.Schema.Types.ObjectId,
+    ref:"FriendRequest",
+  }]
 });
 
 export const User = model("User", userSchema);
