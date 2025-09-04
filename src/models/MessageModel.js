@@ -1,6 +1,5 @@
 
 
-
 import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 
@@ -24,6 +23,13 @@ const messageSchema = new Schema(
          required: true,
          ref:"User"
     },
+    reciver_id:{
+       type: mongoose.Schema.Types.ObjectId, 
+         required: true,
+         ref:"User"
+    },
+    
+
     content: {
       type: String,
       required: true,

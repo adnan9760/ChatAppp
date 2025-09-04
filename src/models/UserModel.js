@@ -11,6 +11,10 @@ const userSchema = new Schema({
     unique: true,
     default: uuidv4,
   },
+  socketid:{
+    type:String,
+    require:true,
+  },
   email: {
     type: String,
     required: true,
