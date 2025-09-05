@@ -115,40 +115,73 @@ class RoomManager {
 
     }
   }
-  handleicecandidate(FriendId, data, client, frdicecan) {
-    console.log("hhhhi");
-    const payload = { type: "webrtc_ice_candidate", data };
+  handleicecandidate(FriendId, data, client, friendSockets) {
+  console.log("ICE Candidate from", client.userId, "to", FriendId, "=>", data);
 
-    if (Array.isArray(frdicecan)) {
-      let delivered = false;
-      for (const sock of frdicecan) {
+  const payload = {
+    type: "webrtc_ice_candidate",
+    from: client.userId,  // sender ID
+    to: FriendId,         // receiver ID
+    data,                 // ICE candidate object
+  };
+
+  if (Array.isArray(friendSockets)) {
+    for (const sock of friendSockets) {
+      try {
         if (sock.readyState === 1) {
           sock.send(JSON.stringify(payload));
-          delivered = true;
         }
-
+      } catch (err) {
+        console.error("Failed to send ICE candidate:", err);
       }
-
-
     }
   }
-  DirectMessage(UserId, FriendId, data, msgType, client, friendSockets) {
-    const payload = { type: "receive_message", from: UserId, data, msgType };
+}
+
+async  DirectMessage(UserId, FriendId, data, msgType, client, friendSockets) {
+  try {
+    let conversation = await Conversation.findOne({
+      participants: { $all: [UserId, FriendId] }
+    });
+
+    if (!conversation) {
+      conversation = await Conversation.create({
+        participants: [UserId, FriendId]
+      });
+    }
+
+    const message = await Message.create({
+      conversation_id: conversation._id,
+      sender_id: UserId,
+      reciver_id: FriendId,
+      content: data,
+      message_type: msgType || "text"
+    });
+
+    const payload = {
+      type: "receive_message",
+      from: UserId,
+      data,
+      msgType,
+      conversation_id: conversation._id,
+      message_id: message.message_id
+    };
 
     if (Array.isArray(friendSockets)) {
-      let delivered = false;
       for (const sock of friendSockets) {
         if (sock.readyState === 1) {
-          console.log("re=insnsnsn")
           sock.send(JSON.stringify(payload));
-          delivered = true;
         }
-
       }
-
-
     }
+
+    console.log("Message stored and delivered:", message._id);
+    return message;
+
+  } catch (err) {
+    console.error("Error in DirectMessage:", err);
   }
+}
 
 
   async JoinRoom(client, roomId, clientData = {
